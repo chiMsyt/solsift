@@ -10,9 +10,9 @@ import inspect
 
 import pytest
 
-from jobsift import boards
-from jobsift.boards.feeds import FeedBoard, strip_html
-from jobsift.listing import Listing
+from solsift import boards
+from solsift.boards.feeds import FeedBoard, strip_html
+from solsift.listing import Listing
 from tests.test_money import FakeRates
 
 boards.load_all()
@@ -86,7 +86,7 @@ def test_strip_html():
 
 def test_feed_board_parses_a_record_without_network():
     """RemoteOK's real record shape, offline."""
-    from jobsift.boards.feeds import RemoteOK
+    from solsift.boards.feeds import RemoteOK
     board = RemoteOK()
     item = {"id": 42, "position": "Executive Assistant", "company": "Acme",
             "location": "Worldwide", "description": "<p>Admin work.</p>",
@@ -97,18 +97,20 @@ def test_feed_board_parses_a_record_without_network():
     assert listing.title == "Executive Assistant"
     assert listing.board == "remoteok"
     assert listing.description == "Admin work."
-    # 30000 reads as annual, so an hourly figure has to be plausible.
-    assert 5 < listing.pay_low < 40
+    # RemoteOK gives no period, so 30000 has to be inferred. It must land on
+    # annual (~$15/hr), not monthly (~$187/hr) - and be flagged as inferred.
+    assert 5 < listing.pay_low < 40, f"got {listing.pay_low}"
+    assert not listing.pay_certain, "an inferred period must not read as certain"
 
 
 def test_a_broken_record_is_skipped_not_fatal():
-    from jobsift.boards.feeds import RemoteOK
+    from solsift.boards.feeds import RemoteOK
     with pytest.raises((KeyError, TypeError, ValueError)):
         RemoteOK().to_listing({"no": "id"}, FakeRates())
 
 
 def test_linkedin_query_split():
-    from jobsift.boards.linkedin import LinkedIn
+    from solsift.boards.linkedin import LinkedIn
     assert LinkedIn()._split("virtual assistant | Philippines") == \
         ("virtual assistant", "Philippines")
     assert LinkedIn()._split("bookkeeper") == ("bookkeeper", "")
@@ -116,7 +118,7 @@ def test_linkedin_query_split():
 
 def test_linkedin_uses_no_credentials():
     """The guest endpoint is the whole point - nothing to suspend."""
-    from jobsift.boards.linkedin import LinkedIn
+    from solsift.boards.linkedin import LinkedIn
     src = inspect.getsource(LinkedIn)
     for forbidden in ("li_at", "cookie", "Cookie", "password", "JSESSIONID"):
         assert forbidden not in src, \

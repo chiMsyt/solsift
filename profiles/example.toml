@@ -1,4 +1,4 @@
-# jobsift profile - "example"
+# solsift profile - "example"
 #
 # Everything personal about your job search lives here and nowhere else.
 # This file is gitignored. Never commit it, and never put a real webhook
@@ -7,8 +7,8 @@
 name = "example"
 
 # --- Where to look ----------------------------------------------------------
-# One [[source]] block per board. Add as many as you like; jobsift merges the
-# results and de-duplicates. Run `jobsift boards` to see every installed board
+# One [[source]] block per board. Add as many as you like; solsift merges the
+# results and de-duplicates. Run `solsift boards` to see every installed board
 # and what it expects as a query.
 #
 # Most boards here are public APIs and need no browser, so they are fast and
@@ -94,9 +94,9 @@ title_keywords = ["assistant", "admin", "bookkeep", "data entry", "operations"]
 # Your own catch-all. Case-insensitive substring match on title + description.
 exclude_keywords = []
 
-# Turn off any built-in rule by name. `jobsift rules` lists them.
+# Turn off any built-in rule by name. `solsift rules` lists them.
 disable_rules = []
 
 [notify]
 # Optional. Survivors are POSTed here as JSON after each run.
-# webhook = "http://localhost:5678/webhook/jobsift"
+# webhook = "http://localhost:5678/webhook/solsift"

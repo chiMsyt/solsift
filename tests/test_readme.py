@@ -24,26 +24,26 @@ def test_readme_matches_the_code():
 
 
 def test_every_rule_is_documented():
-    from jobsift.rules import ALL_RULES
+    from solsift.rules import ALL_RULES
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     for rule in ALL_RULES:
         assert f"`{rule.key}`" in readme, f"rule {rule.key} missing from README"
 
 
 def test_every_command_is_documented():
-    from jobsift.cli import build_parser
+    from solsift.cli import build_parser
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     sub = next(a for a in build_parser()._actions
                if hasattr(a, "choices") and a.choices)
     for name in sub.choices:
-        assert f"`jobsift {name}`" in readme, f"command {name} missing from README"
+        assert f"`solsift {name}`" in readme, f"command {name} missing from README"
 
 
 def test_readme_promises_match_reality():
     """Claims in the prose that a future edit could quietly falsify."""
-    from jobsift.listing import Listing
-    from jobsift.profile import Profile, Source
-    from jobsift.rules import screen
+    from solsift.listing import Listing
+    from solsift.profile import Profile, Source
+    from solsift.rules import screen
 
     p = Profile(name="t", sources=[Source("remoteok", ["x"])],
                 floor_per_hour=4.0)

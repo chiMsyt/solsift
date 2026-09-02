@@ -24,7 +24,7 @@ class Board(Protocol):
     """One job board."""
 
     name: str
-    #: Shown by `jobsift boards`. Say what a query looks like for this board.
+    #: Shown by `solsift boards`. Say what a query looks like for this board.
     help: str
     #: True if `search` needs a live Playwright page.
     needs_browser: bool
@@ -61,7 +61,7 @@ def get(name: str) -> Board:
         known = ", ".join(sorted(_REGISTRY)) or "none installed"
         raise KeyError(
             f"No board adapter named {name!r}.\nAvailable: {known}\n"
-            f"Run `jobsift boards` for what each one expects as a query.")
+            f"Run `solsift boards` for what each one expects as a query.")
     return _REGISTRY[name]
 
 

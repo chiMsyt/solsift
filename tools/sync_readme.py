@@ -23,9 +23,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from jobsift import boards                       # noqa: E402
-from jobsift.cli import build_parser             # noqa: E402
-from jobsift.rules import ALL_RULES              # noqa: E402
+from solsift import boards                       # noqa: E402
+from solsift.cli import build_parser             # noqa: E402
+from solsift.rules import ALL_RULES              # noqa: E402
 
 README = ROOT / "README.md"
 
@@ -46,11 +46,11 @@ def gen_commands() -> str:
     sub = next(a for a in parser._actions if hasattr(a, "choices") and a.choices)
     out = ["| command | what it does |", "|---|---|"]
     for name, p in sub.choices.items():
-        out.append(f"| `jobsift {name}` | {_cell(p.description or p.prog)} |")
+        out.append(f"| `solsift {name}` | {_cell(p.description or p.prog)} |")
     # argparse keeps help on the parent action, not the child parser.
     helps = {c.dest: c.help for c in sub._choices_actions}
     out = ["| command | what it does |", "|---|---|"] + [
-        f"| `jobsift {name}` | {_cell(helps.get(name, ''))} |"
+        f"| `solsift {name}` | {_cell(helps.get(name, ''))} |"
         for name in sub.choices]
     return "\n".join(out)
 

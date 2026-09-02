@@ -1,4 +1,4 @@
-"""jobsift command line.
+"""solsift command line.
 
 UX principles, since this is the whole surface most people see:
 
@@ -6,7 +6,7 @@ UX principles, since this is the whole surface most people see:
   error message.
 - **Nothing is silent.** A stale exchange rate, a skipped listing and a rule
   that killed half the board all say so.
-- **The first run works with no configuration.** `jobsift init` writes a profile
+- **The first run works with no configuration.** `solsift init` writes a profile
   with comments explaining every field, then tells you the next command.
 """
 
@@ -56,12 +56,12 @@ def _profile_path(args) -> Path:
         if len(found) > 1:
             raise ProfileError(
                 "More than one profile in ./profiles - say which:\n  "
-                + "\n  ".join(f"jobsift {sys.argv[1]} --profile {p}" for p in found))
-    return Path.home() / ".config" / "jobsift" / "profile.toml"
+                + "\n  ".join(f"solsift {sys.argv[1]} --profile {p}" for p in found))
+    return Path.home() / ".config" / "solsift" / "profile.toml"
 
 
 def _fail(msg: str, code: int = 1):
-    err.print(Panel(Text(str(msg), style="white"), title="[bold red]jobsift",
+    err.print(Panel(Text(str(msg), style="white"), title="[bold red]solsift",
                     border_style="red", title_align="left"))
     sys.exit(code)
 
@@ -77,7 +77,7 @@ def cmd_init(args):
         f"  • [bold]queries[/]         which searches to run\n"
         f"  • [bold]floor_per_hour[/]  the rate you will not go under\n"
         f"  • [bold]currency[/]        what to report pay in\n\n"
-        f"Then:  [bold green]jobsift run[/]",
+        f"Then:  [bold green]solsift run[/]",
         title="[bold green]Profile created", border_style="green",
         title_align="left"))
 
@@ -136,7 +136,7 @@ def cmd_doctor(args):
     except ProfileError as e:
         table.add_row(bad, "profile", str(e).splitlines()[0])
 
-    console.print(Panel(table, title="[bold]jobsift doctor", border_style="blue",
+    console.print(Panel(table, title="[bold]solsift doctor", border_style="blue",
                         title_align="left"))
 
 
@@ -160,7 +160,7 @@ def _emit(result, profile, out_dir: Path, quiet: bool):
     if not result.kept and result.new_count == 0:
         console.print("\n[yellow]Nothing new since the last run.[/] "
                       "Report left untouched.\n"
-                      "Force a full re-scan with [cyan]jobsift run --rescan[/]")
+                      "Force a full re-scan with [cyan]solsift run --rescan[/]")
         return None
     path = write_report(result, profile, out_dir)
 
@@ -175,6 +175,12 @@ def _emit(result, profile, out_dir: Path, quiet: bool):
     if result.kept and not quiet:
         console.print(table)
 
+    unsure = sum(1 for v in result.kept
+                 if v.listing.pay_low is not None and not v.listing.pay_certain)
+    if unsure:
+        console.print(f"[yellow]{unsure} listings had no stated pay period[/] - "
+                      f"marked [bold]?[/], period inferred from size. Kept on "
+                      f"purpose; check the figure before relying on it.")
     if result.rates.stale:
         console.print("[yellow]Exchange rates came from cache - the network was "
                       "unreachable. Check borderline pay by hand.[/]")
@@ -225,7 +231,7 @@ def cmd_show(args):
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="jobsift",
+        prog="solsift",
         description="Read a job board so you do not have to. "
                     "Removes what is disqualifying; leaves the judgment to you.")
     p.add_argument("--profile", help="path to a profile TOML")

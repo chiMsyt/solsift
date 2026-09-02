@@ -82,6 +82,9 @@ def run(profile: Profile, *, headed: bool = False, limit: int = 0,
     needs_browser = any(b.needs_browser for _, b in adapters)
 
     rates = Rates(profile.currency)
+    # Derived from the user's own numbers, never a hardcoded per-currency table.
+    pay_kw = dict(hourly_ceiling=profile.hourly_ceiling,
+                  hours_per_month=profile.hours_per_month)
     seen = set() if rescan else set(_load_json(profile.seen_path, []))
     store = _load_json(profile.listings_path, {})
     skip = frozenset() if rescan else frozenset(seen)
@@ -115,7 +118,7 @@ def run(profile: Profile, *, headed: bool = False, limit: int = 0,
                 got = 0
                 try:
                     for listing in board.search(query, rates, page=page,
-                                                skip=skip):
+                                                skip=skip, **pay_kw):
                         key = f"{listing.board}:{listing.id}"
                         if key in seen and not rescan:
                             continue

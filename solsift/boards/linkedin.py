@@ -56,7 +56,7 @@ class LinkedIn:
         return terms.strip(), location.strip()
 
     def search(self, query: str, rates: Rates, *, page=None,
-               skip: frozenset[str] = frozenset()) -> Iterator[Listing]:
+               skip: frozenset[str] = frozenset(), **pay_kw) -> Iterator[Listing]:
         kw, loc = self._split(query)
         seen_here: set[str] = set()
 
@@ -91,15 +91,14 @@ class LinkedIn:
 
                 link = _LINK.search(chunk)
                 salary = one(_SALARY)
-                lo, hi, raw, note = parse_pay(salary, rates) if salary \
-                    else (None, None, "", "")
+                pay = parse_pay(salary, rates, **pay_kw) if salary else None
 
-                yield Listing(
+                listing = Listing(
                     board=self.name, id=jid,
                     url=link.group(1) if link
                         else f"https://www.linkedin.com/jobs/view/{jid}",
                     title=title, company=one(_COMPANY),
                     location=one(_LOCATION, loc), employment_type="",
                     description=title,     # guest cards carry no description
-                    pay_low=lo, pay_high=hi, pay_raw=raw or salary,
-                    pay_note=note)
+                    pay_raw=salary)
+                yield listing.apply_pay(pay) if pay else listing

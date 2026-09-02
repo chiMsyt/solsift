@@ -33,8 +33,15 @@ class Listing:
 
     pay_low: float | None = None
     pay_high: float | None = None
+    #: Most generous plausible reading, in base currency per hour. Equals
+    #: `pay_high` when the cadence is known. When it is a guess this is the
+    #: hourly interpretation, and the floor rule tests against it - so an
+    #: ambiguous figure is never removed on the strength of that guess.
+    pay_ceiling: float | None = None
+    #: False when hourly-vs-monthly came from magnitude alone.
+    pay_certain: bool = True
     pay_raw: str = ""              # what the board actually said, for auditing
-    pay_note: str = ""             # e.g. "monthly PHP -> hourly at 62.44"
+    pay_note: str = ""             # e.g. "PHP, period not stated - assumed monthly"
 
     posted: str = ""               # board's own wording: "3 hours ago"
     first_seen: str = field(default_factory=lambda: date.today().isoformat())
@@ -51,6 +58,14 @@ class Listing:
     def pay_display(self) -> str:
         if self.pay_low is None:
             return "not stated"
-        if self.pay_high and self.pay_high != self.pay_low:
-            return f"{self.pay_low:.2f}-{self.pay_high:.2f}"
-        return f"{self.pay_low:.2f}"
+        body = (f"{self.pay_low:.2f}-{self.pay_high:.2f}"
+                if self.pay_high and self.pay_high != self.pay_low
+                else f"{self.pay_low:.2f}")
+        return body if self.pay_certain else body + " ?"
+
+    def apply_pay(self, pay) -> "Listing":
+        """Copy a parsed `money.Pay` onto this listing."""
+        self.pay_low, self.pay_high = pay.low, pay.high
+        self.pay_ceiling, self.pay_certain = pay.ceiling, pay.certain
+        self.pay_raw, self.pay_note = pay.raw or self.pay_raw, pay.note
+        return self

@@ -8,9 +8,9 @@ something a person would have applied to.
 
 import pytest
 
-from jobsift.listing import Listing
-from jobsift.profile import Profile, Source
-from jobsift.rules import ALL_RULES, RULES_BY_KEY, screen
+from solsift.listing import Listing
+from solsift.profile import Profile, Source
+from solsift.rules import ALL_RULES, RULES_BY_KEY, screen
 
 
 def listing(**kw):
@@ -41,11 +41,44 @@ def test_ordinary_listing_survives():
 # --- pay --------------------------------------------------------------------
 
 def test_below_floor_dies():
-    assert killed_by(listing(pay_low=3.0), profile()) == "below_floor"
+    assert killed_by(listing(pay_low=3.0, pay_high=3.0, pay_ceiling=3.0),
+                     profile()) == "below_floor"
 
 
 def test_at_floor_survives():
-    assert killed_by(listing(pay_low=4.0), profile()) is None
+    assert killed_by(listing(pay_low=4.0, pay_high=4.0, pay_ceiling=4.0),
+                     profile()) is None
+
+
+def test_range_straddling_the_floor_survives():
+    """A $3-8/hr posting is not a sub-$4 job; it might pay $8. The floor tests
+    the top of the range, because a false removal costs a real job."""
+    assert killed_by(listing(pay_low=3.0, pay_high=8.0, pay_ceiling=8.0),
+                     profile()) is None
+
+
+def test_a_guessed_cadence_cannot_remove_a_listing():
+    """The whole point of pay_ceiling.
+
+    PHP 5,000 with no stated period is ~USD 80. Read as monthly that is
+    USD 0.50/hr - under any floor. Read as hourly it is USD 80/hr. We do not
+    know which, so it must survive and be flagged, not vanish.
+    """
+    guessed = listing(pay_low=0.50, pay_high=0.60, pay_ceiling=80.0,
+                      pay_certain=False)
+    assert killed_by(guessed, profile()) is None
+
+    # The same figure, with the period actually stated, is removable.
+    stated = listing(pay_low=0.50, pay_high=0.60, pay_ceiling=0.60,
+                     pay_certain=True)
+    assert killed_by(stated, profile()) == "below_floor"
+
+
+def test_uncertain_pay_is_marked_in_the_display():
+    from solsift.listing import Listing
+    l = Listing(board="t", id="1", url="u", title="x",
+                pay_low=5.0, pay_high=6.0, pay_certain=False)
+    assert l.pay_display.endswith("?")
 
 
 def test_unstated_pay_survives():
@@ -168,7 +201,7 @@ def test_disabling_a_rule_works():
 # --- structure --------------------------------------------------------------
 
 def test_every_rule_explains_itself():
-    """The README and `jobsift rules` are generated from these fields."""
+    """The README and `solsift rules` are generated from these fields."""
     for r in ALL_RULES:
         assert r.key and r.kills and r.why
         assert r.why.endswith("."), f"{r.key}: why should read as prose"

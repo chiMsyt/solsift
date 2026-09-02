@@ -15,7 +15,7 @@ Two design commitments that everything else follows from:
    you nothing you can act on, and the reason is what you reuse when you decide
    the rule was wrong.
 2. **Rules are data, not code branches.** The README's rule table, the
-   `jobsift rules` command and the profile's `disable` list all read the same
+   `solsift rules` command and the profile's `disable` list all read the same
    objects. That is why the docs cannot drift from behaviour.
 
 Rules are deliberately conservative. A false kill costs a real job; a false keep
@@ -130,7 +130,14 @@ def _pattern_rule(key, kills, why, pattern, exception) -> Rule:
 def _below_floor(listing: Listing, profile: Profile) -> bool:
     if profile.floor_per_hour is None or listing.pay_low is None:
         return False          # unknown pay is not a disqualification
-    return listing.pay_low < profile.floor_per_hour
+    # Test the most generous plausible reading, not the chosen one. When the
+    # hourly/monthly cadence was a guess these differ by ~160x, and removing a
+    # listing on the strength of that guess is how a good job disappears
+    # without anyone noticing. Below the floor even at its best reading is a
+    # safe removal; anything else is kept and flagged.
+    best = listing.pay_ceiling if listing.pay_ceiling is not None \
+        else listing.pay_high or listing.pay_low
+    return best < profile.floor_per_hour
 
 
 def _wrong_employment(listing: Listing, profile: Profile) -> bool:
@@ -243,8 +250,11 @@ _PROFILE_RULES = [
     Rule("below_floor", "pays below your floor",
          "Your floor is the rate you will not go under. Anchoring below it is "
          "hard to undo: the first number you accept becomes the number every "
-         "later client hears about. Listings with no stated pay are kept - "
-         "unknown is not the same as low.",
+         "later client hears about. Two deliberate escapes - a listing with no "
+         "stated pay is always kept, because unknown is not the same as low; "
+         "and where the hourly-vs-monthly reading had to be guessed, the "
+         "listing is only removed if it falls under the floor at its most "
+         "generous reading, then shown with a ? so you can check it.",
          _below_floor, ("profile", "pay")),
     Rule("wrong_employment", "wrong employment type",
          "Set this to what you can actually take. A student who cannot work "

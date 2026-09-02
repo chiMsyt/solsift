@@ -26,10 +26,10 @@ jobs:
         run: uv run python tools/sync_readme.py --check
 
       - name: Example profile still loads
-        run: uv run python -c "from jobsift.profile import Profile; Profile.load('profiles/example.toml')"
+        run: uv run python -c "from solsift.profile import Profile; Profile.load('profiles/example.toml')"
 
       - name: CLI starts
         run: |
-          uv run jobsift --help
-          uv run jobsift rules
-          uv run jobsift boards
+          uv run solsift --help
+          uv run solsift rules
+          uv run solsift boards

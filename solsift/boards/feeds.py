@@ -66,7 +66,7 @@ class FeedBoard:
     def parse(self, raw: bytes) -> list[dict]:
         raise NotImplementedError
 
-    def to_listing(self, item: dict, rates: Rates) -> Listing | None:
+    def to_listing(self, item: dict, rates: Rates, **pay_kw) -> Listing | None:
         raise NotImplementedError
 
     def matches(self, listing: Listing, query: str) -> bool:
@@ -78,7 +78,7 @@ class FeedBoard:
         return all(t in blob for t in terms)
 
     def search(self, query: str, rates: Rates, *, page=None,
-               skip: frozenset[str] = frozenset()) -> Iterator[Listing]:
+               skip: frozenset[str] = frozenset(), **pay_kw) -> Iterator[Listing]:
         try:
             raw = http_get(self.url(query))
         except (urllib.error.URLError, TimeoutError) as e:
@@ -94,7 +94,7 @@ class FeedBoard:
 
         for item in items:
             try:
-                listing = self.to_listing(item, rates)
+                listing = self.to_listing(item, rates, **pay_kw)
             except (KeyError, TypeError, ValueError):
                 continue                       # one bad record is not fatal
             if listing is None or f"{self.name}:{listing.id}" in skip:
@@ -103,28 +103,46 @@ class FeedBoard:
                 yield listing
 
 
+#: How boards spell the pay period in their own JSON.
+_PERIOD_WORDS = {
+    "hour": "hourly", "hourly": "hourly", "hr": "hourly",
+    "day": "daily", "daily": "daily",
+    "week": "weekly", "weekly": "weekly",
+    "month": "monthly", "monthly": "monthly",
+    "year": "yearly", "yearly": "yearly", "annual": "yearly",
+    "annually": "yearly",
+}
+
+
 def _pay(item, rates, *, lo_key, hi_key, cur_key=None, period_key=None,
-         text=""):
-    """Structured salary fields where a board provides them, prose otherwise."""
+         text="", **kw):
+    """Use a board's structured salary fields where it provides them.
+
+    A stated period from the board is the single most reliable signal there is,
+    so it is passed straight through as `cadence` and the result is certain.
+    When the board gives numbers but NO period, the cadence is unknown and must
+    stay unknown - an earlier version guessed with a hardcoded
+    `160*12 if amount > 10000 else 160 if > 1000 else 1`, which ignored the
+    currency entirely and quietly mispriced every non-USD board.
+    """
     lo, hi = item.get(lo_key), item.get(hi_key)
-    if lo:
-        cur = (item.get(cur_key) or "USD").upper() if cur_key else "USD"
-        period = (item.get(period_key) or "").lower() if period_key else ""
-        unit = {"hour": 1, "hourly": 1}.get(period)
-        try:
-            lo_f, hi_f = float(lo), float(hi or lo)
-        except (TypeError, ValueError):
-            return parse_pay(text, rates)
-        if unit is None:                        # annual is the usual default
-            div = 160 * 12 if lo_f > 10000 else (160 if lo_f > 1000 else 1)
-            lo_f, hi_f = lo_f / div, hi_f / div
-        try:
-            return (round(rates.to_base(lo_f, cur), 2),
-                    round(rates.to_base(hi_f, cur), 2),
-                    f"{cur} {lo}-{hi}", f"{cur} from feed")
-        except KeyError:
-            return None, None, "", ""
-    return parse_pay(text, rates)
+    if lo in (None, "", 0):
+        return parse_pay(text, rates, **kw)
+
+    try:
+        lo_f, hi_f = float(lo), float(hi or lo)
+    except (TypeError, ValueError):
+        return parse_pay(text, rates, **kw)
+
+    cur = (str(item.get(cur_key) or "USD")).upper() if cur_key else "USD"
+    raw_period = str(item.get(period_key) or "").strip().lower() \
+        if period_key else ""
+    cadence = _PERIOD_WORDS.get(raw_period)
+
+    # Hand the numbers back through the one parser, so board figures and prose
+    # figures go down exactly the same path and get the same certainty rules.
+    synthetic = f"{cur} {lo_f:.2f} - {cur} {hi_f:.2f}"
+    return parse_pay(synthetic, rates, cadence=cadence, **kw)
 
 
 # --------------------------------------------------------------------- boards
@@ -133,7 +151,7 @@ def _pay(item, rates, *, lo_key, hi_key, cur_key=None, period_key=None,
 class RemoteOK(FeedBoard):
     name = "remoteok"
     help = ("Free-text terms, e.g. \"virtual assistant\" or \"admin\".\n"
-            "The feed returns everything current; jobsift filters locally.")
+            "The feed returns everything current; solsift filters locally.")
     # Required by their API terms of service, not decoration. See report.py.
     attribution = "Jobs from [Remote OK](https://remoteok.com)"
 
@@ -143,18 +161,17 @@ class RemoteOK(FeedBoard):
         data = json.loads(raw)
         return [d for d in data if d.get("id")]     # [0] is the legal notice
 
-    def to_listing(self, item, rates):
+    def to_listing(self, item, rates, **pay_kw):
         desc = strip_html(item.get("description", ""))
-        lo, hi, raw, note = _pay(item, rates, lo_key="salary_min",
-                                 hi_key="salary_max", text=desc[:2500])
+        pay = _pay(item, rates, lo_key="salary_min",
+                                 hi_key="salary_max", text=desc[:2500], **pay_kw)
         return Listing(
             board=self.name, id=str(item["id"]),
             url=item.get("url") or item.get("apply_url", ""),
             title=item.get("position", ""), company=item.get("company", ""),
             location=item.get("location") or "Remote",
             employment_type="Remote", description=desc[:8000],
-            pay_low=lo, pay_high=hi, pay_raw=raw, pay_note=note,
-            posted=item.get("date", ""))
+            posted=item.get("date", "")).apply_pay(pay)
 
 
 @register
@@ -170,18 +187,16 @@ class Remotive(FeedBoard):
 
     def parse(self, raw): return json.loads(raw).get("jobs", [])
 
-    def to_listing(self, item, rates):
+    def to_listing(self, item, rates, **pay_kw):
         desc = strip_html(item.get("description", ""))
-        lo, hi, raw, note = parse_pay(
-            f"{item.get('salary', '')}\n{desc[:2000]}", rates)
+        pay = parse_pay(f"{item.get('salary', '', **pay_kw)}\n{desc[:2000]}", rates)
         return Listing(
             board=self.name, id=str(item["id"]), url=item.get("url", ""),
             title=item.get("title", ""), company=item.get("company_name", ""),
             location=item.get("candidate_required_location", "Remote"),
             employment_type=item.get("job_type", "").replace("_", " "),
-            description=desc[:8000], pay_low=lo, pay_high=hi,
-            pay_raw=raw or item.get("salary", ""), pay_note=note,
-            posted=item.get("publication_date", ""))
+            description=desc[:8000], pay_raw=item.get("salary", ""),
+            posted=item.get("publication_date", "")).apply_pay(pay)
 
 
 @register
@@ -193,12 +208,12 @@ class Jobicy(FeedBoard):
 
     def parse(self, raw): return json.loads(raw).get("jobs", [])
 
-    def to_listing(self, item, rates):
+    def to_listing(self, item, rates, **pay_kw):
         desc = strip_html(item.get("jobDescription")
                           or item.get("jobExcerpt", ""))
-        lo, hi, raw, note = _pay(item, rates, lo_key="salaryMin",
+        pay = _pay(item, rates, lo_key="salaryMin",
                                  hi_key="salaryMax", cur_key="salaryCurrency",
-                                 period_key="salaryPeriod", text=desc[:2000])
+                                 period_key="salaryPeriod", text=desc[:2000], **pay_kw)
         types = item.get("jobType")
         return Listing(
             board=self.name, id=str(item["id"]), url=item.get("url", ""),
@@ -206,8 +221,8 @@ class Jobicy(FeedBoard):
             location=item.get("jobGeo", "Remote"),
             employment_type=", ".join(types) if isinstance(types, list)
                             else str(types or ""),
-            description=desc[:8000], pay_low=lo, pay_high=hi,
-            pay_raw=raw, pay_note=note, posted=item.get("pubDate", ""))
+            description=desc[:8000],
+            posted=item.get("pubDate", "")).apply_pay(pay)
 
 
 @register
@@ -220,9 +235,9 @@ class Arbeitnow(FeedBoard):
 
     def parse(self, raw): return json.loads(raw).get("data", [])
 
-    def to_listing(self, item, rates):
+    def to_listing(self, item, rates, **pay_kw):
         desc = strip_html(item.get("description", ""))
-        lo, hi, raw, note = parse_pay(desc[:2500], rates)
+        pay = parse_pay(desc[:2500], rates, **pay_kw)
         types = item.get("job_types") or []
         return Listing(
             board=self.name, id=str(item["slug"]), url=item.get("url", ""),
@@ -230,8 +245,8 @@ class Arbeitnow(FeedBoard):
             location=item.get("location", ""),
             employment_type=("Remote, " if item.get("remote") else "")
                             + ", ".join(types),
-            description=desc[:8000], pay_low=lo, pay_high=hi,
-            pay_raw=raw, pay_note=note, posted=str(item.get("created_at", "")))
+            description=desc[:8000],
+            posted=str(item.get("created_at", ""))).apply_pay(pay)
 
 
 @register
@@ -245,11 +260,11 @@ class Himalayas(FeedBoard):
         d = json.loads(raw)
         return d.get("jobs") or d.get("data") or []
 
-    def to_listing(self, item, rates):
+    def to_listing(self, item, rates, **pay_kw):
         desc = strip_html(item.get("description") or item.get("excerpt", ""))
-        lo, hi, raw, note = _pay(item, rates, lo_key="minSalary",
+        pay = _pay(item, rates, lo_key="minSalary",
                                  hi_key="maxSalary", cur_key="currency",
-                                 period_key="salaryPeriod", text=desc[:2000])
+                                 period_key="salaryPeriod", text=desc[:2000], **pay_kw)
         loc = item.get("locationRestrictions") or ["Remote"]
         return Listing(
             board=self.name, id=str(item.get("guid") or item.get("title")),
@@ -257,8 +272,8 @@ class Himalayas(FeedBoard):
             company=item.get("companyName", ""),
             location=", ".join(loc) if isinstance(loc, list) else str(loc),
             employment_type=str(item.get("employmentType", "")),
-            description=desc[:8000], pay_low=lo, pay_high=hi,
-            pay_raw=raw, pay_note=note, posted=str(item.get("pubDate", "")))
+            description=desc[:8000],
+            posted=str(item.get("pubDate", ""))).apply_pay(pay)
 
 
 @register
@@ -285,15 +300,15 @@ class WeWorkRemotely(FeedBoard):
     def matches(self, listing, query):
         return True                    # the category URL is already the filter
 
-    def to_listing(self, item, rates):
+    def to_listing(self, item, rates, **pay_kw):
         desc = strip_html(item.get("description", ""))
         title = item.get("title", "")
         company, _, role = title.partition(":")
-        lo, hi, raw, note = parse_pay(desc[:2500], rates)
+        pay = parse_pay(desc[:2500], rates, **pay_kw)
         return Listing(
             board=self.name, id=item.get("guid") or item.get("link", ""),
             url=item.get("link", ""), title=(role or title).strip(),
             company=company.strip() if role else "",
             location=item.get("region", "Remote"), employment_type="Remote",
-            description=desc[:8000], pay_low=lo, pay_high=hi,
-            pay_raw=raw, pay_note=note, posted=item.get("pubDate", ""))
+            description=desc[:8000],
+            posted=item.get("pubDate", "")).apply_pay(pay)

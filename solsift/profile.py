@@ -33,6 +33,9 @@ class Profile:
     currency: str = "USD"
     floor_per_hour: float | None = None
     target_per_hour: float | None = None
+    hours_per_month: int = 160
+    #: Above this, per hour, a figure is not an hourly rate. None = derive it.
+    hourly_ceiling_override: float | None = None
 
     employment_types: list[str] = field(default_factory=list)
     remote_only: bool = False
@@ -54,7 +57,7 @@ class Profile:
         if not path.exists():
             raise ProfileError(
                 f"No profile at {path}\n"
-                f"Create one with:  jobsift init --name <you>")
+                f"Create one with:  solsift init --name <you>")
         try:
             raw = tomllib.loads(path.read_text(encoding="utf-8"))
         except tomllib.TOMLDecodeError as e:
@@ -78,6 +81,8 @@ class Profile:
             currency=(pay.get("currency") or "USD").upper(),
             floor_per_hour=pay.get("floor_per_hour"),
             target_per_hour=pay.get("target_per_hour"),
+            hours_per_month=pay.get("hours_per_month", 160),
+            hourly_ceiling_override=pay.get("hourly_ceiling"),
             employment_types=filters.get("employment_types", []),
             remote_only=filters.get("remote_only", False),
             credentials=filters.get("credentials_held", []),
@@ -100,7 +105,7 @@ class Profile:
                 f"search.\nAdd at least one:\n\n"
                 f'  [[source]]\n  board = "remoteok"\n'
                 f'  queries = ["virtual assistant"]\n\n'
-                f"Run `jobsift boards` to see what each board expects.")
+                f"Run `solsift boards` to see what each board expects.")
 
         from .boards import available, load_all
         load_all()
@@ -123,12 +128,31 @@ class Profile:
             raise ProfileError(
                 f"{self.path}: disable_rules names rules that do not exist: "
                 f"{', '.join(sorted(unknown))}\n"
-                f"Run `jobsift rules` to see the real names.")
+                f"Run `solsift rules` to see the real names.")
+
+    @property
+    def hourly_ceiling(self) -> float:
+        """Above this many base-currency units per hour, a figure is a salary.
+
+        Derived from the user's own target and floor rather than a hardcoded
+        per-currency table. A table only knows the currencies someone thought to
+        list, and it silently misprices every other market; this scales with
+        whatever the user says their own market pays, in any currency the rate
+        service knows.
+        """
+        if self.hourly_ceiling_override:
+            return float(self.hourly_ceiling_override)
+        anchors = [v for v in (self.target_per_hour, self.floor_per_hour) if v]
+        if not anchors:
+            return 150.0
+        # 10x the best anchor: generous enough that a genuinely high hourly rate
+        # is still read as hourly, tight enough to catch a monthly salary.
+        return max(max(anchors) * 10.0, 50.0)
 
     # ------------------------------------------------------------------ paths
     @property
     def state_dir(self) -> Path:
-        d = Path.home() / ".local" / "state" / "jobsift" / self.name
+        d = Path.home() / ".local" / "state" / "solsift" / self.name
         d.mkdir(parents=True, exist_ok=True)
         return d
 
@@ -141,7 +165,7 @@ class Profile:
         return self.state_dir / "listings.json"
 
 
-TEMPLATE = '''# jobsift profile - "{name}"
+TEMPLATE = '''# solsift profile - "{name}"
 #
 # Everything personal about your job search lives here and nowhere else.
 # This file is gitignored. Never commit it, and never put a real webhook
@@ -150,8 +174,8 @@ TEMPLATE = '''# jobsift profile - "{name}"
 name = "{name}"
 
 # --- Where to look ----------------------------------------------------------
-# One [[source]] block per board. Add as many as you like; jobsift merges the
-# results and de-duplicates. Run `jobsift boards` to see every installed board
+# One [[source]] block per board. Add as many as you like; solsift merges the
+# results and de-duplicates. Run `solsift boards` to see every installed board
 # and what it expects as a query.
 #
 # Most boards here are public APIs and need no browser, so they are fast and
@@ -237,12 +261,12 @@ title_keywords = ["assistant", "admin", "bookkeep", "data entry", "operations"]
 # Your own catch-all. Case-insensitive substring match on title + description.
 exclude_keywords = []
 
-# Turn off any built-in rule by name. `jobsift rules` lists them.
+# Turn off any built-in rule by name. `solsift rules` lists them.
 disable_rules = []
 
 [notify]
 # Optional. Survivors are POSTed here as JSON after each run.
-# webhook = "http://localhost:5678/webhook/jobsift"
+# webhook = "http://localhost:5678/webhook/solsift"
 '''
 
 

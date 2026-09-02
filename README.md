@@ -1,4 +1,4 @@
-# jobsift
+# solsift
 
 **Read a job board so you don't have to.**
 
@@ -7,7 +7,7 @@ Job boards are mostly noise. On a real sample of a part-time assistant board,
 quarter paid under half the asking rate. Reading those is the expensive part of
 looking for work, and it's the part that doesn't need a person.
 
-jobsift reads **eight job boards at once**, removes every listing that's
+solsift reads **eight job boards at once**, removes every listing that's
 disqualifying for reasons requiring no judgment, and hands you one merged
 shortlist with the reasoning left blank.
 
@@ -18,8 +18,8 @@ install** — a feed-only profile runs in seconds.
 [What it won't do](#what-it-wont-do).
 
 ```console
-$ jobsift run
-timothy  floor 4.0 USD/hr
+$ solsift run
+you  floor 4.00 USD/hr
 8 sources: remoteok, remotive, arbeitnow, jobicy, himalayas, weworkremotely, linkedin, jobstreet
 
   remoteok         14 new  virtual assistant
@@ -66,8 +66,8 @@ The filtering rules aren't generic. Each one is a mistake somebody already made:
 ## Install
 
 ```bash
-git clone https://github.com/chiMsyt/jobsift
-cd jobsift
+git clone https://github.com/chiMsyt/solsift
+cd solsift
 uv sync                      # or: pip install -e .
 ```
 
@@ -75,7 +75,7 @@ uv sync                      # or: pip install -e .
 feed over plain HTTP.
 
 Only `jobstreet` drives a real browser, because it sits behind a bot check that
-no plain HTTP client gets past. If you use it, jobsift will pick up **Brave,
+no plain HTTP client gets past. If you use it, solsift will pick up **Brave,
 Chrome or Edge** automatically; if you have none:
 
 ```bash
@@ -87,15 +87,15 @@ Skip that entirely by leaving browser-based boards out of your profile.
 Check everything's wired up:
 
 ```bash
-jobsift doctor
+solsift doctor
 ```
 
 ## Start
 
 ```bash
-jobsift init --name you      # writes a commented profile
+solsift init --name you      # writes a commented profile
 # edit profiles/you.toml — at minimum: queries, floor_per_hour, currency
-jobsift run
+solsift run
 ```
 
 Your profile is **gitignored**. Nothing personal — your rate floor, your
@@ -140,7 +140,7 @@ exclude_keywords = []
 disable_rules = []
 
 [notify]
-# webhook = "http://localhost:5678/webhook/jobsift"   # n8n, Zapier, anything
+# webhook = "http://localhost:5678/webhook/solsift"   # n8n, Zapier, anything
 ```
 
 ---
@@ -150,16 +150,16 @@ disable_rules = []
 <!-- BEGIN:commands -->
 | command | what it does |
 |---|---|
-| `jobsift init` | write a commented starter profile |
-| `jobsift run` | scrape, screen, report |
-| `jobsift rescreen` | re-apply rules to stored listings, no network |
-| `jobsift rules` | every disqualifying rule and why it exists |
-| `jobsift boards` | installed board adapters |
-| `jobsift doctor` | check the install |
-| `jobsift show` | print the current shortlist as markdown |
+| `solsift init` | write a commented starter profile |
+| `solsift run` | scrape, screen, report |
+| `solsift rescreen` | re-apply rules to stored listings, no network |
+| `solsift rules` | every disqualifying rule and why it exists |
+| `solsift boards` | installed board adapters |
+| `solsift doctor` | check the install |
+| `solsift show` | print the current shortlist as markdown |
 <!-- END:commands -->
 
-`jobsift rescreen` is the one worth knowing. It re-applies every rule to
+`solsift rescreen` is the one worth knowing. It re-applies every rule to
 listings already stored — no network, no hit on the board. **Tuning a rule has
 to be free**, or nobody checks whether a change was right and the rules quietly
 rot.
@@ -179,7 +179,7 @@ boolean tells you nothing you can act on.
 | `pay_to_work` | asks for money before hiring | A legitimate employer never charges to be hired. Training fees, equipment deposits and placement fees are the most common shape of recruitment fraud aimed at inexperienced remote applicants. |
 | `always_on` | demands 24/7 availability | Nobody is available 24/7. A posting that asks reveals how it will treat boundaries once you are hired. |
 | `id_before_contract` | wants ID documents before any contract | Identity documents before a signed contract is an identity-theft pattern, not an onboarding step. |
-| `below_floor` | pays below your floor | Your floor is the rate you will not go under. Anchoring below it is hard to undo: the first number you accept becomes the number every later client hears about. Listings with no stated pay are kept - unknown is not the same as low. |
+| `below_floor` | pays below your floor | Your floor is the rate you will not go under. Anchoring below it is hard to undo: the first number you accept becomes the number every later client hears about. Two deliberate escapes - a listing with no stated pay is always kept, because unknown is not the same as low; and where the hourly-vs-monthly reading had to be guessed, the listing is only removed if it falls under the floor at its most generous reading, then shown with a ? so you can check it. |
 | `wrong_employment` | wrong employment type | Set this to what you can actually take. A student who cannot work full-time should never read a full-time posting twice. |
 | `not_remote` | on-site, and you asked for remote only | Job boards file remote and on-site roles under the same searches. If commuting is not possible, this is the highest-volume rule you have. |
 | `missing_credential` | requires a credential you do not hold | Only fires when the posting states a credential as required and your profile does not list it. Deliberately strict: 'CPA preferred' on a bookkeeping role is a wish, not a bar, and must not kill it. |
@@ -194,7 +194,7 @@ disable_rules = ["disguised_sales"]
 ```
 
 Rules are **deliberately conservative**. A false kill costs you a real job; a
-false keep costs thirty seconds of reading. When those trade off, jobsift keeps.
+false keep costs thirty seconds of reading. When those trade off, solsift keeps.
 
 ---
 
@@ -208,7 +208,7 @@ false keep costs thirty seconds of reading. When those trade off, jobsift keeps.
 | `jobicy` | `Free-text terms, e.g. "admin". Returns remote jobs worldwide.` |
 | `jobstreet` | `https://ph.jobstreet.com/virtual-assistant-jobs/part-time?sortmode=ListedDate` |
 | `linkedin` | `virtual assistant \| Philippines` |
-| `remoteok` | `The feed returns everything current; jobsift filters locally.` |
+| `remoteok` | `The feed returns everything current; solsift filters locally.` |
 | `remotive` | `Free-text terms, e.g. "assistant". Searched server-side.` |
 | `weworkremotely` | `https://weworkremotely.com/categories/remote-customer-support-jobs.rss` |
 <!-- END:boards -->
@@ -220,12 +220,12 @@ missing — incomplete rather than quietly wrong.
 Adding a board means writing one class with one `search` method and registering
 it. For an API or RSS board, subclass `FeedBoard` and it's about twenty lines of
 "where does this board keep the title" — see
-[`jobsift/boards/feeds.py`](jobsift/boards/feeds.py). Nothing else in the
+[`solsift/boards/feeds.py`](solsift/boards/feeds.py). Nothing else in the
 codebase knows any board's name.
 
 ### On LinkedIn specifically
 
-jobsift reads LinkedIn's **logged-out guest endpoint** — no account, no cookies,
+solsift reads LinkedIn's **logged-out guest endpoint** — no account, no cookies,
 nothing that can be suspended. That's deliberate: LinkedIn is aggressive about
 automated access from authenticated sessions, and the penalty lands on the
 account, which is the worst thing to lose mid-job-hunt. The trade-off is that
@@ -249,20 +249,40 @@ shortlisted roles downward.
 
 **It won't treat unknown pay as low pay.** Ever.
 
+**It won't delete a job on the strength of a guess.** A posting that just says
+`5,000` might be monthly or hourly depending on the currency and the market.
+solsift works it out in this order — *what the posting says* → *what the board's
+API says* → *magnitude, as a last resort* — and when it lands on magnitude it
+records the figure as **inferred**, marks it `?` in the output, and lists it
+separately in the report.
+
+The floor rule then removes a listing only if it's under your floor **at its most
+generous plausible reading**. On a real run that saved a `$70-120` posting whose
+period was guessed wrong: read as monthly it looked like $0.44/hr and would have
+been binned, but because the guess was recorded as a guess, it survived and got
+flagged for a human to check.
+
+There is no hardcoded per-currency threshold table. There was, it had a `PHP:
+2000` in it, and a PHP 5,000 monthly salary sat exactly on the boundary and was
+read as PHP 5,000 *per hour* — which ranked an intern role as the best-paid job
+on the board. The boundary is now derived from your own `floor_per_hour` and
+`target_per_hour` at live FX, so it works in any currency the rate service
+knows rather than the handful someone remembered to list.
+
 ---
 
 ## Please use it responsibly
 
 **Prefer the feed.** Where a board publishes an API or RSS, that's the access
-route the board itself offers, and jobsift uses it — that's seven of the eight
+route the board itself offers, and solsift uses it — that's seven of the eight
 adapters. Only `jobstreet` is scraped, because it publishes nothing.
 
-Automated access may still conflict with a board's terms of service. jobsift is
+Automated access may still conflict with a board's terms of service. solsift is
 published as a tool for **reading your own job search** — the same pages you'd
 open by hand, at a human pace. Check the terms of any board you point it at.
 You're responsible for how you use it.
 
-Some boards require credit as a condition of use. jobsift renders those
+Some boards require credit as a condition of use. solsift renders those
 attributions into every report automatically; **don't strip them.**
 
 Be decent about it: run it on a schedule, not in a loop. The seen-list means

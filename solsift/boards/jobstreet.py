@@ -46,7 +46,7 @@ class JobStreet:
            "body": "[data-automation=jobAdDetails]"}
 
     def search(self, query: str, rates: Rates, *, page=None,
-               skip: frozenset[str] = frozenset()) -> Iterator[Listing]:
+               skip: frozenset[str] = frozenset(), **pay_kw) -> Iterator[Listing]:
         if page is None:
             raise RuntimeError("jobstreet needs a browser page")
 
@@ -65,11 +65,12 @@ class JobStreet:
         for jid in sorted(set(_JOB_ID.findall(html))):
             if f"{self.name}:{jid}" in skip:
                 continue                   # skip BEFORE paying for a page load
-            listing = self._fetch(page, origin, jid, rates)
+            listing = self._fetch(page, origin, jid, rates, **pay_kw)
             if listing:
                 yield listing
 
-    def _fetch(self, page, origin: str, jid: str, rates: Rates) -> Listing | None:
+    def _fetch(self, page, origin: str, jid: str, rates: Rates,
+               **pay_kw) -> Listing | None:
         url = f"{origin}/job/{jid}"
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=45000)
@@ -88,10 +89,10 @@ class JobStreet:
 
         salary, body = grab("salary"), grab("body")
         # Salary field first, so an explicit figure beats a stray number in prose.
-        lo, hi, raw, note = parse_pay(f"{salary}\n{body[:2500]}", rates)
+        pay = parse_pay(f"{salary}\n{body[:2500]}", rates, **pay_kw)
 
         return Listing(
             board=self.name, id=jid, url=url, title=title,
             company=grab("company"), location=grab("location"),
             employment_type=grab("work_type"), description=body[:8000],
-            pay_low=lo, pay_high=hi, pay_raw=raw or salary, pay_note=note)
+            pay_raw=salary).apply_pay(pay)
