@@ -251,7 +251,7 @@ def build_parser() -> argparse.ArgumentParser:
             s.add_argument("--headed", action="store_true",
                            help="show the browser (use if a bot check blocks you)")
             s.add_argument("--limit", type=int, default=0,
-                           help="fetch at most N new listings")
+                           help="fetch at most N new listings PER BOARD (for a quick check)")
             s.add_argument("--rescan", action="store_true",
                            help="ignore what has been seen; fetch everything")
         else:

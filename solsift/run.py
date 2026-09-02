@@ -114,6 +114,11 @@ def run(profile: Profile, *, headed: bool = False, limit: int = 0,
         for src, board in adapters:
             if board.attribution and board.attribution not in attributions:
                 attributions.append(board.attribution)
+            # --limit is PER BOARD, not per run. A global cap would spend the
+            # whole budget on whichever board happens to be listed first and
+            # report nothing at all from the other seven, which makes the flag
+            # useless for its actual purpose: sampling every source quickly.
+            from_board = 0
             for query in src.queries:
                 got = 0
                 try:
@@ -126,19 +131,18 @@ def run(profile: Profile, *, headed: bool = False, limit: int = 0,
                         store[key] = listing.to_dict()
                         fetched.append(listing)
                         got += 1
-                        if limit and len(fetched) >= limit:
+                        from_board += 1
+                        if limit and from_board >= limit:
                             break
-                except (RuntimeError, Exception) as e:   # one board, not the run
+                except Exception as e:              # one board, not the run
                     failures[board.name] = f"{type(e).__name__}: {e}"
                     if progress:
                         progress("board_failed", board=board.name, error=str(e))
                     continue
                 if progress:
                     progress("query", board=board.name, query=query, found=got)
-                if limit and len(fetched) >= limit:
+                if limit and from_board >= limit:
                     break
-            if limit and len(fetched) >= limit:
-                break
     finally:
         if browser:
             browser.close()
