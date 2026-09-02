@@ -30,10 +30,12 @@ class JobStreet:
     name = "jobstreet"
     needs_browser = True
     attribution = ""
-    help = ("A full JobStreet search URL, e.g.\n"
-            "  https://ph.jobstreet.com/virtual-assistant-jobs/part-time"
+    help = ("A full JobStreet search URL, including the country subdomain:\n"
+            "  https://<cc>.jobstreet.com/<role>-jobs/<worktype>"
             "?sortmode=ListedDate\n"
-            "Build the search on the site first, then paste the URL. The path "
+            "sg, my, id, ph - whichever market you are searching. There is no\n"
+            "default country; a guess would quietly search someone else's market.\n"
+            "Build the search on the site first, then paste the URL. The path\n"
             "segment is the filter - /part-time is right, ?worktype= is not.")
 
     # data-automation attributes are JobStreet's own test hooks - far more
@@ -51,7 +53,15 @@ class JobStreet:
             raise RuntimeError("jobstreet needs a browser page")
 
         origin_m = re.match(r"(https?://[^/]+)", query)
-        origin = origin_m.group(1) if origin_m else "https://ph.jobstreet.com"
+        if not origin_m:
+            # No default country. Guessing one would quietly search a market the
+            # user never asked for and report it as though it were theirs.
+            raise RuntimeError(
+                f"jobstreet needs a full search URL including the country "
+                f"subdomain, got {query!r}.\n"
+                f"Example: https://sg.jobstreet.com/admin-jobs/part-time"
+                f"?sortmode=ListedDate")
+        origin = origin_m.group(1)
 
         page.goto(query, wait_until="domcontentloaded", timeout=45000)
         page.wait_for_timeout(3000)

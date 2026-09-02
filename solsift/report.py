@@ -26,7 +26,9 @@ def markdown(result: RunResult, profile: Profile) -> str:
         "",
         f"`{profile.name}` · "
         f"{len(profile.sources)} sources · "
-        f"**{result.seen_total} listings seen, {len(kept)} survived**",
+        f"**{result.seen_total} listings seen, {len(kept)} survived**"
+        + (f" · {result.duplicates} duplicates collapsed"
+           if result.duplicates else ""),
         "",
         f"Rates in **{cur}**, fetched "
         + (f"{result.rates.age_hours:.0f}h ago."
@@ -90,6 +92,21 @@ def markdown(result: RunResult, profile: Profile) -> str:
             "next application?*", "",
             "**Verdict:** ", "",
         ]
+
+    dominant = result.dominant_rule
+    if dominant:
+        key, n, share = dominant
+        lines += [
+            "---", "",
+            f"> ⚠️ **`{key}` removed {n} of {len(result.verdicts)} listings "
+            f"({share:.0%}).**",
+            ">",
+            "> One rule doing most of the removing is usually the rule being "
+            "wrong rather than the board being bad. A too-narrow "
+            "`title_keywords` deletes almost everything and looks exactly like "
+            "a quiet week. Check the removed list below, loosen the rule in "
+            "your profile, and re-run `solsift rescreen` - re-applying rules "
+            "costs nothing.", ""]
 
     if killed:
         counts = Counter(v.reason for v in killed)

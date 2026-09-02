@@ -175,6 +175,20 @@ def _emit(result, profile, out_dir: Path, quiet: bool):
     if result.kept and not quiet:
         console.print(table)
 
+    if result.duplicates:
+        console.print(f"[dim]{result.duplicates} duplicates collapsed across "
+                      f"boards[/]")
+
+    dominant = result.dominant_rule
+    if dominant:
+        key, n, share = dominant
+        console.print(
+            f"[yellow]`{key}` removed {n} of {len(result.verdicts)} listings "
+            f"({share:.0%}).[/] One rule doing most of the removing is usually "
+            f"the rule being wrong, not the board.\n"
+            f"  Check it with [cyan]solsift show[/], loosen it in your profile, "
+            f"then [cyan]solsift rescreen[/] - re-running rules is free.")
+
     unsure = sum(1 for v in result.kept
                  if v.listing.pay_low is not None and not v.listing.pay_certain)
     if unsure:

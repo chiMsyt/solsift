@@ -8,11 +8,14 @@ name = "example"
 
 # --- Where to look ----------------------------------------------------------
 # One [[source]] block per board. Add as many as you like; solsift merges the
-# results and de-duplicates. Run `solsift boards` to see every installed board
-# and what it expects as a query.
+# results and de-duplicates across boards. `solsift boards` lists every
+# installed board and what it expects as a query.
 #
 # Most boards here are public APIs and need no browser, so they are fast and
 # they do not break when a site is restyled. Only jobstreet drives a browser.
+#
+# These boards are worldwide by default. Narrow them with your own search
+# terms; do not assume any board is local to you.
 
 [[source]]
 board = "remoteok"
@@ -24,9 +27,10 @@ queries = ["assistant", "bookkeeping"]
 
 [[source]]
 board = "linkedin"
-# "terms | location". Reads the logged-out guest endpoint - no account needed,
-# so there is nothing that can be suspended.
-queries = ["virtual assistant | Philippines"]
+# "terms | location". The location is where the JOB is advertised, which is not
+# necessarily where you are - remote roles are often listed against the
+# employer's country. Try both yours and theirs.
+queries = ["virtual assistant | Philippines", "virtual assistant | Remote"]
 
 [[source]]
 board = "weworkremotely"
@@ -47,49 +51,67 @@ queries = ["admin"]
 board = "himalayas"
 queries = ["assistant"]
 
-# Needs a browser. Paste full search URLs - build the search on the site first,
-# because the board's own filters are cheaper than ours.
+# Needs a browser, and needs the country subdomain - there is no default.
+# sg, my, id, ph ... whichever market you are searching.
 # [[source]]
 # board = "jobstreet"
 # queries = [
-#   "https://ph.jobstreet.com/virtual-assistant-jobs/part-time?sortmode=ListedDate",
+#   "https://sg.jobstreet.com/admin-jobs/part-time?sortmode=ListedDate",
 # ]
 
 # --- What it is worth -------------------------------------------------------
 [pay]
-# Everything is reported in this currency, converted at live rates.
+# Everything is reported in this currency, converted at live rates. Pick the
+# currency you actually want to be PAID in, not the one you spend in - if you
+# are working for a foreign employer, that distinction is the whole game.
 currency = "USD"
 
 # The rate you will not go under. Listings below it are removed, with a reason.
-# Leave unset to keep everything. Listings with NO stated pay are always kept -
-# unknown is not the same as low.
+# Leave unset to keep everything. Listings with NO stated pay are always kept,
+# and a range that straddles your floor is kept too - unknown is not low, and
+# "$3-8/hr" is not a sub-$4 job.
+#
+# Worth thinking about honestly: a floor set against YOUR local cost of living
+# is a floor against your own market, not against what the work is worth to the
+# employer. Offshore hiring exists because the gap between those two numbers is
+# large. Your floor keeps you from being underpaid locally; it will not tell you
+# when a role is underpaid for what it is. The percentile column in the report
+# is there for that second question.
 floor_per_hour = 4.0
 
-# What you actually ask for. Reporting only; it never filters anything.
+# What you actually ask for. Reporting only; it never filters anything. It also
+# sets the boundary solsift uses when a posting states a figure but no period.
 target_per_hour = 6.0
+
+# Working hours in a month, for converting salaries to an hourly rate.
+# hours_per_month = 160
+
+# Above this many <currency> per hour, a figure is treated as a salary rather
+# than an hourly rate. Derived from your floor and target if you leave it unset.
+# hourly_ceiling = 60
 
 # --- What to rule out -------------------------------------------------------
 [filters]
 # Substring match against the board's employment-type field. Empty = accept any.
-# Feed-based boards often leave this blank, and a blank field never removes a
-# listing.
+# Feed boards often leave this blank, and a blank field never removes anything.
 employment_types = []
 
 # Remove on-site roles. Exceptions are handled: "occasional on-site visits" in
 # an otherwise remote role will not trigger this.
 remote_only = true
 
+# Relevance. At least one of these must appear in the job TITLE. Without it, a
+# search for "assistant" returns any posting that happens to say the word once.
+# This is the rule most likely to remove something you wanted - solsift warns
+# when any single rule removes an unusual share of a run.
+title_keywords = ["assistant", "admin", "bookkeep", "data entry", "operations"]
+
 # Credentials you actually hold. Anything listed here can never remove a job.
 credentials_held = []
 
 # Credentials to screen for. A listing is removed only when it states one as
 # REQUIRED and you have not listed it above. "CPA preferred" survives.
-credentials_to_screen = ["RN", "PRC"]
-
-# Relevance filter. At least one of these must appear in the job TITLE.
-# Without it, a search for "assistant" returns any posting that happens to say
-# the word once - a Golang role, a sales role. Leave empty to switch it off.
-title_keywords = ["assistant", "admin", "bookkeep", "data entry", "operations"]
+credentials_to_screen = []
 
 # Your own catch-all. Case-insensitive substring match on title + description.
 exclude_keywords = []

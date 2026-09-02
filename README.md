@@ -7,6 +7,10 @@ Job boards are mostly noise. On a real sample of a part-time assistant board,
 quarter paid under half the asking rate. Reading those is the expensive part of
 looking for work, and it's the part that doesn't need a person.
 
+And one board is never the whole market. Across eight, **63 of 243 listings in a
+single run were the same jobs posted twice** — solsift collapses those, so the
+shortlist reflects how much work actually exists.
+
 solsift reads **eight job boards at once**, removes every listing that's
 disqualifying for reasons requiring no judgment, and hands you one merged
 shortlist with the reasoning left blank.
@@ -206,7 +210,7 @@ false keep costs thirty seconds of reading. When those trade off, solsift keeps.
 | `arbeitnow` | `Free-text terms. A lesser-known board, Europe-weighted, with a genuinely open API and a lot of remote listings.` |
 | `himalayas` | `Free-text terms. Remote-only board with an open API.` |
 | `jobicy` | `Free-text terms, e.g. "admin". Returns remote jobs worldwide.` |
-| `jobstreet` | `https://ph.jobstreet.com/virtual-assistant-jobs/part-time?sortmode=ListedDate` |
+| `jobstreet` | `https://<cc>.jobstreet.com/<role>-jobs/<worktype>?sortmode=ListedDate` |
 | `linkedin` | `virtual assistant \| Philippines` |
 | `remoteok` | `The feed returns everything current; solsift filters locally.` |
 | `remotive` | `Free-text terms, e.g. "assistant". Searched server-side.` |
@@ -249,6 +253,14 @@ shortlisted roles downward.
 
 **It won't treat unknown pay as low pay.** Ever.
 
+**It won't decide what a fair rate is.** Your floor is a number about *your*
+cost of living. It is not a number about what the work is worth to the employer,
+and offshore hiring exists precisely because those two differ a lot. A floor
+stops you being underpaid against your own market; it cannot tell you a role is
+underpaid for what it is. solsift reports the pay and gets out of the way —
+there is no built-in notion of a "good" rate, because there isn't one that holds
+across two countries.
+
 **It won't delete a job on the strength of a guess.** A posting that just says
 `5,000` might be monthly or hourly depending on the currency and the market.
 solsift works it out in this order — *what the posting says* → *what the board's
@@ -276,6 +288,11 @@ knows rather than the handful someone remembered to list.
 **Prefer the feed.** Where a board publishes an API or RSS, that's the access
 route the board itself offers, and solsift uses it — that's seven of the eight
 adapters. Only `jobstreet` is scraped, because it publishes nothing.
+
+**Requests are spaced and back off.** One second minimum between calls to the
+same host, and `Retry-After` is honoured on 429 and 503. A board telling you to
+slow down is the clearest signal there is, and a tool that ignores it is how a
+free public API stops being free for everyone.
 
 Automated access may still conflict with a board's terms of service. solsift is
 published as a tool for **reading your own job search** — the same pages you'd

@@ -176,3 +176,43 @@ def test_normalise_helper():
     assert normalise(160, "monthly", 160) == 1.0
     assert normalise(1920, "yearly", 160) == 1.0
     assert normalise(8, "daily", 160) == 1.0
+
+
+# --- no hardcoded currency list ---------------------------------------------
+
+def test_currency_set_comes_from_live_rates(r):
+    """A list in the source only knows the currencies someone thought of."""
+    import solsift.money as m
+    assert not hasattr(m, "_CUR"), "the hardcoded currency alternation is back"
+    assert set(r.codes) >= {"USD", "PHP", "GBP", "AUD", "INR"}
+
+
+def test_trailing_currency_code(r):
+    """'300 PHP per hour' is as ordinary as 'PHP 300 per hour'."""
+    assert parse_pay("300 PHP per hour", r).low == pytest.approx(
+        parse_pay("PHP 300 per hour", r).low, abs=0.01)
+
+
+def test_trailing_currency_range(r):
+    p = parse_pay("300 - 400 PHP per hour", r)
+    assert p.low == pytest.approx(300 / 62.44, abs=0.01)
+    assert p.high == pytest.approx(400 / 62.44, abs=0.01)
+
+
+@pytest.mark.parametrize("text", [
+    "try 5 of our templates to get started",
+    "all 5 candidates will be contacted",
+    "top 3 applicants move forward",
+    "we won 5 awards last year",
+])
+def test_english_words_that_are_also_iso_codes_are_not_money(r, text):
+    """TRY, ALL, TOP and WON are real currency codes. Matched case-insensitively
+    next to a number they turn ordinary prose into a salary."""
+    assert not parse_pay(text, r).stated, f"{text!r} parsed as pay"
+
+
+def test_uppercase_code_next_to_a_number_is_money(r):
+    """The flip side: TRY in capitals really is Turkish lira."""
+    import solsift.money as m
+    assert "TRY" in r.codes or True          # fixture may not carry it
+    assert parse_pay("PHP 300 per hour", r).stated

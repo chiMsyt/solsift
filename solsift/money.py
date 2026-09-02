@@ -119,6 +119,56 @@ class Rates:
             raise KeyError(f"No rate for {currency} against {self.base}")
         return amount / rate
 
+    @property
+    def codes(self) -> list[str]:
+        """Every currency the rate service knows - roughly 160 of them."""
+        return sorted({self.base, *self._rates})
+
+    def money_regexes(self):
+        """(range, single) regexes covering every currency this base knows.
+
+        Built from the live rate table, not from a list in the source. A
+        hand-written list only knows the currencies someone thought of, and a
+        posting in an omitted currency parses as "no pay stated" - safe, but
+        blind, and the same failure as the threshold table this module already
+        had to remove.
+
+        **Codes match case-sensitively.** Several real ISO codes are ordinary
+        English words - TRY, ALL, TOP, SOS, WON, BAM - so matched
+        case-insensitively next to a number, "try 5 of our templates" parses as
+        five Turkish lira. Postings write codes in capitals; the handful of
+        common mixed-case spellings are listed explicitly.
+
+        Currency may lead or trail: "PHP 300" and "300 PHP" are both ordinary,
+        and matching only the first silently halves what gets priced.
+        """
+        if getattr(self, "_regexes", None) is None:
+            mixed = ["Php", "Rp", "RM", "Rs", "Usd", "usd", "php"]
+            parts = ([re.escape(c) for c in sorted(self.codes, key=len,
+                                                   reverse=True)]
+                     + [re.escape(m) for m in mixed]
+                     + [re.escape(s) for s in sorted(_SYMBOL, key=len,
+                                                     reverse=True)])
+            cur = "(?:" + "|".join(parts) + ")"
+            dash = r"\s*(?:-|to|–|—|until)\s*"
+            # Named groups, because the four shapes below have different
+            # layouts and positional groups made this unreadable and wrong.
+            self._regexes = (
+                re.compile(
+                    # "PHP 300 - PHP 400"        (currency leads)
+                    rf"(?P<lead_cur>{cur})\s*(?P<lead_lo>{_NUM}){dash}"
+                    rf"(?:{cur})?\s*(?P<lead_hi>{_NUM})"
+                    rf"|"
+                    # "300 - 400 PHP"            (currency trails the range)
+                    rf"(?P<trail_lo>{_NUM}){dash}(?P<trail_hi>{_NUM})\s*"
+                    rf"(?P<trail_cur>{cur})"),
+                re.compile(
+                    rf"(?P<one_cur>{cur})\s*(?P<one_num>{_NUM})"      # "PHP 300"
+                    rf"|"
+                    rf"(?P<num_one>{_NUM})\s*(?P<cur_one>{cur})"),    # "300 PHP"
+            )
+        return self._regexes
+
 
 @dataclass
 class Pay:
@@ -149,11 +199,11 @@ class Pay:
 # --- Parsing ----------------------------------------------------------------
 
 _NUM = r"[\d,]+(?:\.\d+)?"
-_CUR = (r"(?:USD|PHP|EUR|GBP|AUD|CAD|SGD|INR|IDR|MYR|NZD|ZAR|NGN|BRL|MXN|"
-        r"JPY|CNY|THB|VND|PLN|Php|\$|₱|€|£|₹|¥)")
-_RANGE = re.compile(
-    rf"({_CUR})\s*({_NUM})\s*(?:-|to|–|—|until)\s*(?:{_CUR})?\s*({_NUM})", re.I)
-_SINGLE = re.compile(rf"({_CUR})\s*({_NUM})", re.I)
+# The currency alternation is built at runtime from the live rate table -
+# see Rates.currency_pattern. There is deliberately no list of currencies
+# here: a hand-written one only knows the currencies someone thought of,
+# and a posting in an omitted currency parses as 'no pay stated' - safe,
+# but blind, and the same failure as the threshold table already removed.
 
 _PER_HOUR = re.compile(r"per hour|/\s*h(?:ou)?r|hourly|an hour|/hr|each hour",
                        re.I)
@@ -206,18 +256,32 @@ def parse_pay(text: str, rates: Rates, *, cadence: str | None = None,
     if not text:
         return Pay.unknown()
 
-    m = _RANGE.search(text)
+    def _num(s: str) -> float:
+        return float(s.replace(",", ""))
+
+    range_rx, single_rx = rates.money_regexes()
+
+    m = range_rx.search(text)
     if m:
-        cur = _currency_of(m.group(1))
-        lo, hi = (float(g.replace(",", "")) for g in (m.group(2), m.group(3)))
+        g = m.groupdict()
+        if g["lead_cur"] is not None:
+            token, lo, hi = g["lead_cur"], _num(g["lead_lo"]), _num(g["lead_hi"])
+        else:
+            token, lo, hi = (g["trail_cur"], _num(g["trail_lo"]),
+                             _num(g["trail_hi"]))
         raw = m.group(0)
     else:
-        m = _SINGLE.search(text)
+        m = single_rx.search(text)
         if not m:
             return Pay.unknown()
-        cur = _currency_of(m.group(1))
-        lo = hi = float(m.group(2).replace(",", ""))
+        g = m.groupdict()
+        if g["one_cur"] is not None:
+            token, lo = g["one_cur"], _num(g["one_num"])
+        else:
+            token, lo = g["cur_one"], _num(g["num_one"])
+        hi = lo
         raw = m.group(0)
+    cur = _currency_of(token)
 
     if hi < lo:                                       # "$9 - $7" happens
         lo, hi = hi, lo

@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Iterator
 
@@ -35,11 +37,42 @@ _TAGS = re.compile(r"<[^>]+>")
 _WS = re.compile(r"[ \t]*\n\s*\n\s*")
 
 
-def http_get(url: str, timeout: int = 25) -> bytes:
-    req = urllib.request.Request(url, headers={
-        "User-Agent": UA, "Accept": "application/json, text/xml, */*"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+#: Minimum gap between requests to the same host. Not a rate limiter so much as
+#: basic manners: solsift runs a couple of times a week, not in a loop, and a
+#: tool that hammers a free public API is how free public APIs stop being free.
+MIN_INTERVAL = 1.0
+_last_request: dict[str, float] = {}
+
+
+def http_get(url: str, timeout: int = 25, retries: int = 2) -> bytes:
+    """Fetch a URL politely: spaced out, and backing off when asked to.
+
+    Honours `Retry-After` on 429 and 503. A board telling us to slow down is
+    the clearest signal there is, and ignoring it is how an IP gets blocked for
+    everyone using the tool.
+    """
+    host = urllib.parse.urlsplit(url).netloc
+    for attempt in range(retries + 1):
+        gap = time.monotonic() - _last_request.get(host, 0.0)
+        if gap < MIN_INTERVAL:
+            time.sleep(MIN_INTERVAL - gap)
+        req = urllib.request.Request(url, headers={
+            "User-Agent": UA, "Accept": "application/json, text/xml, */*"})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                _last_request[host] = time.monotonic()
+                return r.read()
+        except urllib.error.HTTPError as e:
+            _last_request[host] = time.monotonic()
+            if e.code in (429, 503) and attempt < retries:
+                wait = e.headers.get("Retry-After")
+                try:
+                    delay = min(float(wait), 30.0) if wait else 2.0 ** attempt
+                except (TypeError, ValueError):
+                    delay = 2.0 ** attempt
+                time.sleep(delay)
+                continue
+            raise
 
 
 def strip_html(html: str) -> str:
@@ -60,7 +93,11 @@ class FeedBoard:
     #: Most feeds return everything and expect the client to filter.
     filter_locally = True
 
-    def url(self, query: str) -> str:
+    #: Feeds that page. `url()` receives the offset; None means one page only.
+    page_size: int | None = None
+    max_pages: int = 5
+
+    def url(self, query: str, offset: int = 0) -> str:
         raise NotImplementedError
 
     def parse(self, raw: bytes) -> list[dict]:
@@ -79,28 +116,40 @@ class FeedBoard:
 
     def search(self, query: str, rates: Rates, *, page=None,
                skip: frozenset[str] = frozenset(), **pay_kw) -> Iterator[Listing]:
-        try:
-            raw = http_get(self.url(query))
-        except (urllib.error.URLError, TimeoutError) as e:
-            raise RuntimeError(
-                f"{self.name}: could not reach the feed ({type(e).__name__}). "
-                f"Other boards in your profile still ran.") from None
-        try:
-            items = self.parse(raw)
-        except (ValueError, _XmlParseError, DefusedXmlException) as e:
-            raise RuntimeError(
-                f"{self.name}: the feed did not parse ({e}). The board most "
-                f"likely changed its format - please open an issue.") from None
-
-        for item in items:
+        # Page until the feed runs dry. A single fixed-size call silently shows
+        # a truncated board, which looks identical to a quiet week.
+        pages = self.max_pages if self.page_size else 1
+        for n in range(pages):
+            offset = n * (self.page_size or 0)
             try:
-                listing = self.to_listing(item, rates, **pay_kw)
-            except (KeyError, TypeError, ValueError):
-                continue                       # one bad record is not fatal
-            if listing is None or f"{self.name}:{listing.id}" in skip:
-                continue
-            if self.matches(listing, query):
-                yield listing
+                raw = http_get(self.url(query, offset))
+            except (urllib.error.URLError, TimeoutError) as e:
+                if n:
+                    return                     # keep what earlier pages gave us
+                raise RuntimeError(
+                    f"{self.name}: could not reach the feed "
+                    f"({type(e).__name__}). Other boards still ran.") from None
+            try:
+                items = self.parse(raw)
+            except (ValueError, _XmlParseError, DefusedXmlException) as e:
+                raise RuntimeError(
+                    f"{self.name}: the feed did not parse ({e}). The board most "
+                    f"likely changed its format - please open an issue."
+                ) from None
+
+            if not items:
+                return
+            for item in items:
+                try:
+                    listing = self.to_listing(item, rates, **pay_kw)
+                except (KeyError, TypeError, ValueError):
+                    continue                   # one bad record is not fatal
+                if listing is None or f"{self.name}:{listing.id}" in skip:
+                    continue
+                if self.matches(listing, query):
+                    yield listing
+            if self.page_size is None or len(items) < self.page_size:
+                return
 
 
 #: How boards spell the pay period in their own JSON.
@@ -155,7 +204,7 @@ class RemoteOK(FeedBoard):
     # Required by their API terms of service, not decoration. See report.py.
     attribution = "Jobs from [Remote OK](https://remoteok.com)"
 
-    def url(self, query): return "https://remoteok.com/api"
+    def url(self, query, offset=0): return "https://remoteok.com/api"
 
     def parse(self, raw):
         data = json.loads(raw)
@@ -181,9 +230,11 @@ class Remotive(FeedBoard):
     filter_locally = False
     attribution = "Jobs from [Remotive](https://remotive.com)"
 
-    def url(self, query):
+    page_size = 100
+
+    def url(self, query, offset=0):
         return ("https://remotive.com/api/remote-jobs?limit=100&search="
-                + urllib.request.quote(query))
+                + urllib.parse.quote(query))
 
     def parse(self, raw): return json.loads(raw).get("jobs", [])
 
@@ -204,7 +255,8 @@ class Jobicy(FeedBoard):
     name = "jobicy"
     help = "Free-text terms, e.g. \"admin\". Returns remote jobs worldwide."
 
-    def url(self, query): return "https://jobicy.com/api/v2/remote-jobs?count=50"
+    def url(self, query, offset=0):
+        return "https://jobicy.com/api/v2/remote-jobs?count=50"
 
     def parse(self, raw): return json.loads(raw).get("jobs", [])
 
@@ -231,7 +283,12 @@ class Arbeitnow(FeedBoard):
     help = ("Free-text terms. A lesser-known board, Europe-weighted, with a "
             "genuinely open API and a lot of remote listings.")
 
-    def url(self, query): return "https://www.arbeitnow.com/api/job-board-api"
+    page_size = 100
+
+    def url(self, query, offset=0):
+        page = offset // 100 + 1
+        return ("https://www.arbeitnow.com/api/job-board-api"
+                f"?page={page}")
 
     def parse(self, raw): return json.loads(raw).get("data", [])
 
@@ -254,7 +311,11 @@ class Himalayas(FeedBoard):
     name = "himalayas"
     help = "Free-text terms. Remote-only board with an open API."
 
-    def url(self, query): return "https://himalayas.app/jobs/api?limit=100"
+    page_size = 100
+
+    def url(self, query, offset=0):
+        return ("https://himalayas.app/jobs/api?limit=100"
+                f"&offset={offset}")
 
     def parse(self, raw):
         d = json.loads(raw)
@@ -285,7 +346,7 @@ class WeWorkRemotely(FeedBoard):
             "Browse the site, pick a category, use its .rss URL.")
     attribution = "Jobs from [We Work Remotely](https://weworkremotely.com)"
 
-    def url(self, query):
+    def url(self, query, offset=0):
         return query if query.startswith("http") else (
             f"https://weworkremotely.com/categories/{query}.rss")
 

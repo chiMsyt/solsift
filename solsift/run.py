@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import boards
+from .dedupe import collapse
 from .listing import Listing
 from .money import Rates
 from .profile import Profile
@@ -55,6 +56,28 @@ class RunResult:
     failures: dict[str, str] = field(default_factory=dict)
     #: Credit required by some boards' terms of use.
     attributions: list[str] = field(default_factory=list)
+    #: How many duplicates were collapsed across boards.
+    duplicates: int = 0
+    #: "board:id" -> the other boards the same job appeared on.
+    also_on: dict[str, list[str]] = field(default_factory=dict)
+
+    @property
+    def dominant_rule(self):
+        """The rule doing an unusual share of the removing, if there is one.
+
+        A single rule accounting for most of a run is nearly always the rule
+        being wrong rather than the board being bad - a too-narrow
+        `title_keywords` will quietly delete everything and look like a quiet
+        week. Surfacing it turns a silent failure into a question.
+        """
+        if len(self.verdicts) < 20 or not self.killed:
+            return None
+        counts: dict[str, int] = {}
+        for v in self.killed:
+            counts[v.killed_by.key] = counts.get(v.killed_by.key, 0) + 1
+        key, n = max(counts.items(), key=lambda kv: kv[1])
+        share = n / len(self.verdicts)
+        return (key, n, share) if share >= 0.40 else None
 
     @property
     def kept(self) -> list[Verdict]:
@@ -153,9 +176,10 @@ def run(profile: Profile, *, headed: bool = False, limit: int = 0,
     profile.listings_path.write_text(json.dumps(store, indent=1),
                                      encoding="utf-8")
 
-    verdicts = [screen(l, profile) for l in fetched]
-    return RunResult(verdicts, len(store), len(fetched), rates,
-                     failures, attributions)
+    merged = collapse(fetched)
+    verdicts = [screen(l, profile) for l in merged.kept]
+    return RunResult(verdicts, len(store), len(merged.kept), rates,
+                     failures, attributions, merged.collapsed, merged.also_on)
 
 
 def rescreen(profile: Profile) -> RunResult:
@@ -176,5 +200,7 @@ def rescreen(profile: Profile) -> RunResult:
             continue
         if a and a not in attributions:
             attributions.append(a)
-    return RunResult([screen(l, profile) for l in listings], len(listings), 0,
-                     rates, {}, attributions)
+    merged = collapse(listings)
+    return RunResult([screen(l, profile) for l in merged.kept],
+                     len(listings), 0, rates, {}, attributions,
+                     merged.collapsed, merged.also_on)

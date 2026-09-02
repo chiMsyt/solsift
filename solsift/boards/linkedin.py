@@ -66,7 +66,7 @@ class LinkedIn:
             try:
                 html = http_get(url).decode("utf-8", "replace")
             except Exception:
-                break                      # rate-limited or done; keep what we have
+                break            # rate-limited or exhausted; keep what we have
             if not _CARD.search(html):
                 break
 
