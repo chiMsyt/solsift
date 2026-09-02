@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Test
+        run: uv run --group dev pytest -q
+
+      # Docs are generated from the code, so drift is a build failure rather
+      # than something someone notices six months later.
+      - name: README matches the code
+        run: uv run python tools/sync_readme.py --check
+
+      - name: Example profile still loads
+        run: uv run python -c "from jobsift.profile import Profile; Profile.load('profiles/example.toml')"
+
+      - name: CLI starts
+        run: |
+          uv run jobsift --help
+          uv run jobsift rules
+          uv run jobsift boards

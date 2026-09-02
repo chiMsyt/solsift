@@ -1,0 +1,9 @@
+profiles/*.toml
+!profiles/example.toml
+shortlists/
+__pycache__/
+*.pyc
+.venv/
+dist/
+*.egg-info/
+.pytest_cache/
