@@ -64,6 +64,19 @@ The filtering rules aren't generic. Each one is a mistake somebody already made:
   intern role as the best-paid job on the board. There's a regression test.
 - "Occasional on-site visits" in a fully remote role must not trip the on-site
   filter. `CPA preferred` must not trip the credential filter.
+- A bare `$` is ambiguous. `$35,000 per month` on a Philippine board is pesos,
+  and reading it as dollars put a bookkeeping role at the top of a shortlist at
+  **$218/hr**. Now flagged — but only when the resulting rate is implausible,
+  because 98 of 158 listings in that run used a bare `$` and marking them all
+  would make the mark meaningless.
+
+Then a third reason, the one that costs the most: **a shortlist goes off.**
+Boards keep expired postings at the same URL and serve them with **HTTP 200** —
+JobStreet answers 200 with *"This job is no longer advertised"* in the body — so
+a status check says a dead listing is live. Ten days after one run, two of the
+three listings at the top of the shortlist were gone, including the one a
+runbook had named as the next thing to apply to. `solsift check` asks each
+surviving listing's own page and removes only the ones that say they are done.
 
 ---
 
@@ -157,6 +170,7 @@ disable_rules = []
 | `solsift init` | write a commented starter profile |
 | `solsift run` | scrape, screen, report |
 | `solsift rescreen` | re-apply rules to stored listings, no network |
+| `solsift check` | ask each surviving listing if it is still open |
 | `solsift rules` | every disqualifying rule and why it exists |
 | `solsift boards` | installed board adapters |
 | `solsift doctor` | check the install |
@@ -167,6 +181,12 @@ disable_rules = []
 listings already stored — no network, no hit on the board. **Tuning a rule has
 to be free**, or nobody checks whether a change was right and the rules quietly
 rot.
+
+`solsift check` is the one to run before you start applying. It asks each
+surviving listing's own page whether it is still open, and only the page's own
+wording — or a 404 — closes one. A timeout, a 403 or a bot check leaves it
+**kept**, because an unreachable page is not a closed job. Run it after a gap:
+a shortlist a week old is partly fiction.
 
 ---
 
@@ -183,6 +203,7 @@ boolean tells you nothing you can act on.
 | `pay_to_work` | asks for money before hiring | A legitimate employer never charges to be hired. Training fees, equipment deposits and placement fees are the most common shape of recruitment fraud aimed at inexperienced remote applicants. |
 | `always_on` | demands 24/7 availability | Nobody is available 24/7. A posting that asks reveals how it will treat boundaries once you are hired. |
 | `id_before_contract` | wants ID documents before any contract | Identity documents before a signed contract is an identity-theft pattern, not an onboarding step. |
+| `closed` | the posting is no longer open | Set by `solsift check`, never by the scrape. Boards keep expired postings at the same URL and serve them with HTTP 200 - JobStreet answers 200 with 'This job is no longer advertised' in the body - so a status code cannot tell you. Only the page's own wording, or a 404/410, closes a listing here; an unreachable page is kept, because unreachable is not closed. |
 | `below_floor` | pays below your floor | Your floor is the rate you will not go under. Anchoring below it is hard to undo: the first number you accept becomes the number every later client hears about. Two deliberate escapes - a listing with no stated pay is always kept, because unknown is not the same as low; and where the hourly-vs-monthly reading had to be guessed, the listing is only removed if it falls under the floor at its most generous reading, then shown with a ? so you can check it. |
 | `wrong_employment` | wrong employment type | Set this to what you can actually take. A student who cannot work full-time should never read a full-time posting twice. |
 | `not_remote` | on-site, and you asked for remote only | Job boards file remote and on-site roles under the same searches. If commuting is not possible, this is the highest-volume rule you have. |

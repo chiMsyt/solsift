@@ -236,6 +236,97 @@ def cmd_rescreen(args):
         _notify(profile, result.kept)
 
 
+def cmd_check(args):
+    """Ask each surviving listing's own page whether it is still open."""
+    import json
+    from datetime import date as _date
+
+    from .liveness import CLOSED, OPEN, UNKNOWN, check
+
+    profile = Profile.load(_profile_path(args))
+    store = json.loads(profile.listings_path.read_text(encoding="utf-8")) \
+        if profile.listings_path.exists() else {}
+    if not store:
+        _fail("Nothing stored yet. Run `solsift run` first.")
+
+    # Only the survivors: re-checking listings the rules already removed would
+    # spend a request each on jobs that were never going to be applied to.
+    # Highest pay first, which is the order the report prints - so `--limit 30`
+    # checks the top of your shortlist rather than an arbitrary 30. Store order
+    # is insertion order and would make the flag useless for its one purpose.
+    todo = [f"{v.listing.board}:{v.listing.id}"
+            for v in sorted(rescreen(profile).kept,
+                            key=lambda v: -(v.listing.pay_low or 0))
+            if f"{v.listing.board}:{v.listing.id}" in store]
+    if args.limit:
+        todo = todo[:args.limit]
+
+    console.print(f"[bold]{profile.name}[/] · checking {len(todo)} surviving "
+                  f"listings [dim](one request each, spaced out)[/]\n")
+
+    gone, unknown, today = [], [], _date.today().isoformat()
+    # A host that starts refusing will refuse the rest. JobStreet rate-limits a
+    # plain HTTP client after a few dozen sequential requests however politely
+    # they are spaced - the scrape only gets through because it drives a real
+    # browser. Grinding out another thirty "could not tell" lines wastes the
+    # host's patience and tells the reader nothing, so stop asking and say so.
+    from urllib.parse import urlsplit
+    refusals: dict[str, int] = {}
+    skipped: dict[str, int] = {}
+    GIVE_UP_AFTER = 3
+
+    for i, key in enumerate(todo, 1):
+        rec = store[key]
+        host = urlsplit(rec["url"]).netloc
+        if refusals.get(host, 0) >= GIVE_UP_AFTER:
+            skipped[host] = skipped.get(host, 0) + 1
+            continue
+        status = check(rec["url"])
+        if status.state == UNKNOWN and "HTTP 4" in status.why:
+            refusals[host] = refusals.get(host, 0) + 1
+            if refusals[host] == GIVE_UP_AFTER:
+                console.print(f"  [yellow]{host} stopped answering[/] after "
+                              f"{GIVE_UP_AFTER} refusals - not asking it again "
+                              f"this run", highlight=False)
+        else:
+            refusals[host] = 0
+        rec["checked_on"] = today
+        # "Checked" is not "confirmed open". A 403 or a timeout leaves the
+        # listing kept and the reason recorded, so nothing downstream can read
+        # a failed request as a live posting.
+        rec["check_note"] = "" if status.state == OPEN else status.why
+        if status.state == CLOSED:
+            rec["closed_on"] = rec.get("closed_on") or today
+            gone.append((rec, status))
+            console.print(f"  [red]gone[/]     {rec['title'][:56]}  "
+                          f"[dim]{status.why}[/]", highlight=False)
+        elif status.state == UNKNOWN:
+            unknown.append((rec, status))
+            console.print(f"  [yellow]unsure[/]   {rec['title'][:56]}  "
+                          f"[dim]{status.why}[/]", highlight=False)
+        if i % 20 == 0:
+            profile.listings_path.write_text(json.dumps(store, indent=1),
+                                             encoding="utf-8")
+
+    profile.listings_path.write_text(json.dumps(store, indent=1), encoding="utf-8")
+
+    n_skipped = sum(skipped.values())
+    still = len(todo) - len(gone) - len(unknown) - n_skipped
+    console.print(f"\n[bold green]{still}[/] still open, "
+                  f"[red]{len(gone)}[/] closed, "
+                  f"[yellow]{len(unknown)}[/] could not be told"
+                  + (f", [dim]{n_skipped} not asked[/]" if n_skipped else ""))
+    for host, n in skipped.items():
+        console.print(f"[yellow]{n} listings on {host} were not checked[/] - it "
+                      f"stopped answering. Re-run later, or check those by hand.")
+    if unknown:
+        console.print("[dim]Unsure ones are kept. An unreachable page is not a "
+                      "closed job.[/]")
+    if gone:
+        console.print("Closed ones are now removed by the [cyan]closed[/] rule - "
+                      "see the fresh board with [cyan]solsift show[/].")
+
+
 def cmd_show(args):
     profile = Profile.load(_profile_path(args))
     console.print(markdown(rescreen(profile), profile))
@@ -271,6 +362,11 @@ def build_parser() -> argparse.ArgumentParser:
         else:
             s.add_argument("--notify", action="store_true")
         s.set_defaults(func=fn)
+
+    c = sub.add_parser("check", help="ask each surviving listing if it is still open")
+    c.add_argument("--limit", type=int, default=0,
+                   help="check at most N listings")
+    c.set_defaults(func=cmd_check)
 
     sub.add_parser("rules", help="every disqualifying rule and why it exists"
                    ).set_defaults(func=cmd_rules)

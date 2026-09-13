@@ -58,6 +58,26 @@ def markdown(result: RunResult, profile: Profile) -> str:
                          f"{l.company} | `{l.board}` |")
         lines.append("")
 
+    # Every content rule - disguised sales, pay-to-work, 24/7, on-site - reads
+    # the description. A listing that arrives without one is not screened; it is
+    # merely not removable, which is a much weaker claim and must not be printed
+    # as though it were the same. LinkedIn's logged-out endpoint returns the
+    # title and nothing else, and on one run that was 70 of 180 survivors.
+    blind = [v for v in kept if len(v.listing.description.strip()) < 120]
+    if blind:
+        lines += [
+            f"> **{len(blind)} of these arrived with no description**, so the "
+            f"rules that read one - disguised sales, pay-to-work, always-on, "
+            f"on-site - never ran on them. They are not screened listings; they "
+            f"are listings nothing could be held against. Open them before you "
+            f"spend any time on them.", ""]
+        for v in blind[:40]:
+            lines.append(f"> - [{v.listing.title}]({v.listing.url}) — "
+                         f"{v.listing.company} · `{v.listing.board}`")
+        if len(blind) > 40:
+            lines.append(f"> - *...and {len(blind) - 40} more*")
+        lines.append("")
+
     unsure = [v for v in kept if v.listing.pay_low is not None
               and not v.listing.pay_certain]
     if unsure:

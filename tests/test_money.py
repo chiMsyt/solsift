@@ -216,3 +216,51 @@ def test_uppercase_code_next_to_a_number_is_money(r):
     import solsift.money as m
     assert "TRY" in r.codes or True          # fixture may not carry it
     assert parse_pay("PHP 300 per hour", r).stated
+
+
+# --- An ambiguous symbol with a stated period -------------------------------
+# "$35,000 per month" on a Philippine board is pesos, not base currency. The
+# period was stated, so every cadence check passed it as certain, and a
+# bookkeeping role appeared at the top of a real shortlist at 218/hr.
+
+def test_ambiguous_symbol_with_implausible_rate_is_marked_uncertain():
+    rates = FakeRates()
+    pay = parse_pay("$35,000 per month", rates, hourly_ceiling=60.0,
+                    hours_per_month=160)
+    assert pay.low == 218.75, "the figure itself is still reported as parsed"
+    assert not pay.certain, "a 218/hr bookkeeper must not be reported as certain"
+    assert "ambiguous" in pay.note
+
+
+def test_ambiguous_symbol_at_a_plausible_rate_stays_certain():
+    """The mark has to stay rare, or it stops meaning anything.
+
+    98 of 158 listings on a real run used a bare '$'. Flagging all of them
+    would make '?' wallpaper, so only implausibility triggers it.
+    """
+    rates = FakeRates()
+    pay = parse_pay("$25 per hour", rates, hourly_ceiling=60.0)
+    assert pay.certain and pay.low == 25.0
+
+    monthly = parse_pay("$3,000 per month", rates, hourly_ceiling=60.0,
+                        hours_per_month=160)
+    assert monthly.certain and monthly.low == 18.75
+
+
+def test_unambiguous_currency_code_stays_certain_however_large():
+    """'USD 220000 per year' is a real salary, not an ambiguity."""
+    rates = FakeRates()
+    pay = parse_pay("USD 220,000 per year", rates, hourly_ceiling=60.0,
+                    hours_per_month=160)
+    assert pay.certain, "an explicit ISO code is not ambiguous"
+
+
+def test_uncertain_symbol_still_cannot_remove_the_listing():
+    """The standing rule: a guessed value never removes a listing.
+
+    Its ceiling must stay generous enough that the floor rule keeps it.
+    """
+    rates = FakeRates()
+    pay = parse_pay("$35,000 per month", rates, hourly_ceiling=60.0,
+                    hours_per_month=160)
+    assert pay.ceiling >= pay.high >= 4.0

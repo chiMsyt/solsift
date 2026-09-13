@@ -246,7 +246,26 @@ def _off_target(listing: Listing, profile: Profile) -> bool:
     return not any(k.lower() in title for k in profile.title_keywords)
 
 
+def _closed(listing: Listing, profile: Profile) -> bool:
+    """The posting itself said it is done.
+
+    This is the one rule that removes on evidence gathered after the scrape:
+    `solsift check` sets `closed_on` only when the page says so in its own
+    words, or answers 404/410. A timeout, a 403 or a bot check leaves it unset,
+    so nothing is ever removed because a request failed.
+    """
+    return bool(listing.closed_on)
+
+
 _PROFILE_RULES = [
+    Rule("closed", "the posting is no longer open",
+         "Set by `solsift check`, never by the scrape. Boards keep expired "
+         "postings at the same URL and serve them with HTTP 200 - JobStreet "
+         "answers 200 with 'This job is no longer advertised' in the body - so "
+         "a status code cannot tell you. Only the page's own wording, or a "
+         "404/410, closes a listing here; an unreachable page is kept, because "
+         "unreachable is not closed.",
+         _closed, ("liveness",)),
     Rule("below_floor", "pays below your floor",
          "Your floor is the rate you will not go under. Anchoring below it is "
          "hard to undo: the first number you accept becomes the number every "

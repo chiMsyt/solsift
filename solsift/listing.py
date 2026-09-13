@@ -46,6 +46,16 @@ class Listing:
     posted: str = ""               # board's own wording: "3 hours ago"
     first_seen: str = field(default_factory=lambda: date.today().isoformat())
 
+    #: Set by `solsift check` only when the page itself says the posting is
+    #: done. Empty means "not known to be closed", which is not the same as
+    #: "confirmed open" - that is what `checked_on` is for.
+    closed_on: str = ""
+    checked_on: str = ""
+    #: Why a check could not answer - a 403, a timeout, a bot check. Empty when
+    #: the page was served and read, so "checked" is never mistaken for
+    #: "confirmed open".
+    check_note: str = ""
+
     def to_dict(self) -> dict:
         return asdict(self)
 

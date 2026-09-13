@@ -151,7 +151,19 @@ def run(profile: Profile, *, headed: bool = False, limit: int = 0,
                         if key in seen and not rescan:
                             continue
                         seen.add(key)
-                        store[key] = listing.to_dict()
+                        # A re-store must not rewrite history. `first_seen`
+                        # defaults to today, so --rescan used to silently reset
+                        # every listing's age to the day of the rescan - and
+                        # age is the freshest signal there is, because a
+                        # listing under three days old has a short applicant
+                        # queue. `closed_on` is kept for the same reason:
+                        # re-seeing a posting is not evidence it reopened.
+                        prior = store.get(key) or {}
+                        record = listing.to_dict()
+                        for field_name in ("first_seen", "closed_on", "checked_on"):
+                            if prior.get(field_name) and not record.get(field_name):
+                                record[field_name] = prior[field_name]
+                        store[key] = record
                         fetched.append(listing)
                         got += 1
                         from_board += 1

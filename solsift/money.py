@@ -58,6 +58,16 @@ DEFAULT_MONTHLY_FLOOR = 120.0
 _SYMBOL = {"$": "USD", "₱": "PHP", "€": "EUR", "£": "GBP",
            "₹": "INR", "¥": "JPY", "₦": "NGN", "R$": "BRL"}
 
+#: Symbols more than one currency uses. A bare "$" is USD, AUD, CAD, NZD, SGD,
+#: HKD and - on boards whose advertisers type it loosely - the local currency
+#: too. Resolving it to the base currency is the right default and almost always
+#: correct; it is only dangerous when the resulting rate is implausible, which is
+#: where a 35,000-a-month peso salary appeared as 218 USD an hour at the top of a
+#: board. So the symbol alone changes nothing - see the plausibility check in
+#: `parse_pay`. Marking every "$" uncertain was measured first and would have
+#: flagged 98 of 158 listings, which makes the mark mean nothing.
+_AMBIGUOUS_SYMBOLS = {"$", "¥"}
+
 
 class Rates:
     """Live rates with a visible-staleness cache."""
@@ -328,6 +338,20 @@ def parse_pay(text: str, rates: Rates, *, cadence: str | None = None,
 
     hours = _hours_for(cadence, hours_per_month)
     low, high = lo_base / hours, hi_base / hours
+
+    # A stated period does not make an ambiguous SYMBOL certain. "$35,000 per
+    # month" on a Philippine board is pesos, and reading it as base currency
+    # put a bookkeeping role at the top of a shortlist at 218 an hour - a 60x
+    # overstatement that no rule would have caught, because every rule was
+    # looking at the period rather than the currency.
+    # Deliberately narrow: only when the figure is also implausible. The symbol
+    # on its own is right almost every time, and flagging it every time would
+    # turn `?` into wallpaper.
+    if (certain and token.strip() in _AMBIGUOUS_SYMBOLS
+            and low > hourly_ceiling):
+        certain = False
+        source = (f"{token.strip()} is ambiguous and {low:,.0f}/hr is "
+                  f"implausible - the currency may not be {cur}")
 
     # The most generous plausible reading. For an uncertain figure that is the
     # hourly interpretation, which is always the largest. The floor rule uses
